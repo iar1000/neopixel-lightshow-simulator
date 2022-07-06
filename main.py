@@ -46,18 +46,22 @@ MIDDLE = 69
 pixels = [0] * 127
 
 
+# map from 0-9 for printing the strip
 def map_dezi(strip):
-    return [math.floor(x / 25) for x in strip]
+    return [math.floor(x / 28) for x in strip]
 
 
+# print out the values of the strip
 def print_strip(strip):
     for pi in range(len(strip)):
         print(strip[pi], end="")
     print()
 
 
+# simulate time
 for t in range(0, 10000):
     for pi in range(NUMPIXELS):
-        pixels[pi] = sine[(pi + t) % 255]
+        sine_pointer = (pi + t) % 255
+        pixels[pi] = gamma[sine[sine_pointer]]
     print_strip(map_dezi(pixels))
     sleep(0.1)
