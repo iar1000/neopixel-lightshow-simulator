@@ -43,7 +43,7 @@ gamma = [
 
 NUMPIXELS = 127
 MIDDLE = 69
-pixels = [0] * 127
+pixels = [0] * NUMPIXELS
 
 
 # map from 0-9 for printing the strip
@@ -58,10 +58,69 @@ def print_strip(strip):
     print()
 
 
-# simulate time
-for t in range(0, 10000):
+# sine wave passing through
+def sine_traverse(t):
+    new_pixels = [0] * NUMPIXELS
     for pi in range(NUMPIXELS):
         sine_pointer = (pi + t) % 255
-        pixels[pi] = gamma[sine[sine_pointer]]
+        new_pixels[pi] = gamma[sine[sine_pointer]]
+    return new_pixels
+
+
+# two sine waves that traverse outwards
+def sine_traverse_outwards(t):
+    new_pixels = [0] * NUMPIXELS
+    left_pixels = [0] * MIDDLE
+    for pi in range(MIDDLE):
+        sine_pointer = (pi + t) % 255
+        left_pixels[pi] = gamma[sine[sine_pointer]]
+    new_pixels[:MIDDLE] = left_pixels
+    left_pixels.reverse()
+    new_pixels[MIDDLE:] = left_pixels[:(NUMPIXELS-MIDDLE)]
+    return new_pixels
+
+
+def build_state_linear(goal_state, change):
+    new_pixels = pixels
+    done = True
+    for pi in range(NUMPIXELS):
+        # increase brightness linearly if necessary
+        if pixels[pi] < goal_state[pi]:
+            done = False
+            new_pixels[pi] = pixels[pi] + change
+            # handle overshoot
+            if new_pixels[pi] > goal_state[pi]:
+                new_pixels[pi] = goal_state[pi]
+        # decrese brightness if necessary
+        elif pixels[pi] > goal_state[pi]:
+            done = False
+            new_pixels[pi] = pixels[pi] - change
+            # handle overshoot
+            if new_pixels[pi] < goal_state[pi]:
+                new_pixels[pi] = goal_state[pi]
+
+    return new_pixels, done
+
+
+# simulate time
+start_program = False
+for t in range(0, 80):
+    while not start_program:
+        init_setting = sine_traverse_outwards(t)
+        new_pixels, ready = build_state_linear(init_setting, 1)
+        pixels = new_pixels
+        start_program = ready
+        print_strip(map_dezi(pixels))
+
+    pixels = sine_traverse_outwards(t)
+
     print_strip(map_dezi(pixels))
     sleep(0.1)
+
+end_program = False
+while not end_program:
+    init_setting = [0] * NUMPIXELS
+    new_pixels, ready = build_state_linear(init_setting, 1)
+    pixels = new_pixels
+    end_program = ready
+    print_strip(map_dezi(pixels))
