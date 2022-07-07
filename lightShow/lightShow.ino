@@ -12,29 +12,23 @@
 #define LED_MIDDLE 69
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRBW + NEO_KHZ800);
 
-// color setup
-#define BASE_BRIGHTNESS 10
-uint8_t BASE_RED = 0;
-uint8_t BASE_BLUE = 0;
-uint8_t BASE_GREEN = 20;
-uint8_t cutColor(String color, uint8_t value){
-  uint8_t v = value % 256;
-  if(color == "green"){
-    return v > BASE_GREEN ? v : BASE_GREEN;
-  } else if(color == "red"){
-    return v > BASE_RED ? v : BASE_RED;
-  } else if(color == "blue"){
-    return v > BASE_BLUE ? v : BASE_BLUE;
-  } else {
-    return v > BASE_BRIGHTNESS ? v : BASE_BRIGHTNESS;
-  }
-}
-
 // hardcoded sinus wave, discretized values stored in sinusgamma
 uint8_t sinusgamma[256];
-void calcSinusGamma(uint8_t *arr){
+void sinusGamma(uint8_t *arr){
   for(int i = 0; i < 256; i ++){
-    arr[i] = cutColor("base", strip.gamma8(strip.sine8(i)));
+    arr[i] = strip.gamma8(strip.sine8(i));
+  }
+}
+uint8_t diracgamma[256];
+void diracDelta(uint8_t *arr, uint8_t s){
+  uint8_t temp = 0;
+  for(int i = 0; i < 256; i ++){
+    if(i > LED_MIDDLE + s || i < LED_MIDDLE - s){
+      temp = 0;
+    } else {
+      temp = 255;
+    }
+    arr[i] = strip.gamma8(temp);
   }
 }
 
@@ -109,10 +103,35 @@ int build_state_linear(uint8_t * targetR, uint8_t * targetG, uint8_t * targetB,
 }
 
 // sine values at time t to state
-void sine_traverse(unsigned long t, uint8_t * state){
+void sine_traverse(unsigned long t, uint8_t * state, double factor){
   for(int i = 0; i < LED_COUNT; i++){
      uint8_t t_mod = (i + t) % 256;
-     state[i] = sinusgamma[t_mod];
+     state[i] = sinusgamma[t_mod] * factor;
+  }
+}
+
+// dirac delta traversing from the middle outwards
+void dirac_traverse_outwards(unsigned long t, uint8_t * state){
+  for(int i = 0; i < LED_MIDDLE; i++){
+     uint8_t t_mod = (i + t) % 256;
+     state[i] = diracgamma[t_mod];
+  }
+  for(int i = 0; i < LED_COUNT-LED_MIDDLE; i++){
+     uint8_t t_mod = (LED_MIDDLE + i - t) % 256;
+     state[i+LED_MIDDLE] = diracgamma[t_mod];
+  }
+  // remove the first 11 nodes to have equal on and off
+  for(int i = 0; i < 11; i++){
+    state[i] = 0;
+  }
+}
+
+// enforces minimum brightness
+void enforce_base_color(uint8_t * state, uint8_t c){
+  for(int i = 0; i < LED_COUNT; i++){
+    if(state[i] < c){
+      state[i] = c;
+    }
   }
 }
 
@@ -128,6 +147,11 @@ uint8_t pblue[LED_COUNT];
 uint8_t pred_t[LED_COUNT];
 uint8_t pgreen_t[LED_COUNT];
 uint8_t pblue_t[LED_COUNT];
+
+// base colors
+uint8_t BASE_RED = 15;
+uint8_t BASE_BLUE = 0;
+uint8_t BASE_GREEN = 3;
 
 void setup() {
   // init time
@@ -146,8 +170,8 @@ void setup() {
     pblue_t[i] = 0;
   }
 
-  calcSinusGamma(sinusgamma);
-
+  sinusGamma(sinusgamma);
+  diracDelta(diracgamma, 3);
   //Serial.begin(9600);
   
   strip.begin();           // INITIALIZE NeoPixel strip object (REQUIRED)
@@ -159,7 +183,7 @@ void setup() {
 unsigned long tProg = 0;
 bool run_prog = false;
 
-#define T_SETUP 7
+#define T_SETUP 8
 unsigned long tSetup = 0;
 bool run_setup = true;
 
@@ -172,14 +196,28 @@ void loop() {
       tProg++;
       tProgLastTime = millis();
 
-      sine_traverse(tProg, pred);
+      //dirac_traverse_outwards(tProg, pred, 0);
+      //dirac_traverse_outwards(tProg, pblue, 0);
+
+      sine_traverse(tProg, pred, 1); 
+      sine_traverse(tProg, pgreen, 0.2);
+      sine_traverse(tProg, pblue, 0);
+
+      enforce_base_color(pred, BASE_RED);
+      enforce_base_color(pgreen, BASE_GREEN);
+      enforce_base_color(pblue, BASE_BLUE);
+      
   }
   if(run_setup && dtSetup > T_SETUP){
       // update time
       tSetup++;
       tSetupLastTime = millis();
       // update state
-      sine_traverse(tProg, pred_t);
+      //dirac_traverse_outwards(tProg, pred_t, 0);
+      //dirac_traverse_outwards(tProg, pblue_t, 0);
+      sine_traverse(tProg, pred_t, 1);
+      sine_traverse(tProg, pgreen_t, 0.2);
+      sine_traverse(tProg, pblue_t, 0);
       bool done = build_state_linear(pred_t, pgreen_t, pblue_t,
                         pred, pgreen, pblue, 1);
       if(done){
